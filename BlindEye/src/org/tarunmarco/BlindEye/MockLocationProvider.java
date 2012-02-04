@@ -14,12 +14,14 @@ public class MockLocationProvider extends AsyncTask<Void, Void, Void> {
 	private LocationManager locationManager;
 	private String mockLocationProvider;
 	private String LOG_TAG = "MOCK_LOCATION_PROVIDER";
+	private ConditionalWait condwait;
 	//constructor
 	public MockLocationProvider(LocationManager locationManager, 
-			String mockLocationProvider, List<String> data) throws IOException{
+			String mockLocationProvider, List<String> data, ConditionalWait condwait) throws IOException{
 		this.data = data;
 		this.locationManager = locationManager;
 		this.mockLocationProvider = mockLocationProvider;
+		this.condwait = condwait;
 	}
 	//The run method. The thread will wake up every specified seconds and provide a location to the loc 
 	@Override
@@ -32,6 +34,7 @@ public class MockLocationProvider extends AsyncTask<Void, Void, Void> {
 		
 		for (String str : data) {
             try {
+            	condwait.locationProviderProceed();
                 Thread.sleep(sleepTime);
             } catch (InterruptedException e) {
                 e.printStackTrace();

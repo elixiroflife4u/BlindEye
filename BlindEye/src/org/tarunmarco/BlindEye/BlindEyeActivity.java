@@ -17,6 +17,13 @@ import java.util.Scanner;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+
+//import com.citygrid.CGLatLon;
+//import com.citygrid.CityGrid;
+//import com.citygrid.content.offers.CGOffersOffer;
+//import com.citygrid.content.offers.search.CGOffersSearch;
+//import com.citygrid.content.offers.search.CGOffersSearchResults;
+
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -36,7 +43,7 @@ import android.view.GestureDetector.SimpleOnGestureListener;
 import android.view.MotionEvent;
 import android.widget.TextView;
 
-public class BlindEyeActivity extends Activity implements OnInitListener, LocationListener {
+public class BlindEyeActivity extends Activity implements OnInitListener, LocationListener, TextToSpeech.OnUtteranceCompletedListener {
 	//mock location related stuff
 	private MockLocationProvider locProviderThread;
 	private String locProviderString = LocationManager.GPS_PROVIDER;
@@ -63,6 +70,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	private final int MY_DATA_CHECK_CODE = 4567;
 	private TextToSpeech mTts;
 	private final long silenceTime = 800;
+	private boolean currentlySpeaking = false;
 	
 	TextView gestureEvent;
 	TextView recognizerEvent;
@@ -72,6 +80,8 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	String errorStatus = ""; //if no error, set this to empty string
 	
 	private static final int VOICE_RECOGNITION_REQUEST_CODE = 1234;	
+	
+	private ConditionalWait condwait;
 	
 	
 	 /** Called when the activity is first created. */
@@ -122,7 +132,10 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 				data.add(line);
 			}
 			Log.e("LOCATION_FILE_READING", data.size() + " lines");
-			locProviderThread = new MockLocationProvider(locManager, locProviderString, data);
+			condwait = new ConditionalWait();
+			condwait.setRunStatus(false);
+			locProviderThread = new MockLocationProvider(locManager, locProviderString, data, condwait);
+			locProviderThread.execute();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -170,6 +183,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     	
     	updateTextViewWithLocation();
     	searchForLocationAddress();
+    	//searchCityGridOffers();
     }
     
     private void updateTextViewWithLocation() {
@@ -186,6 +200,48 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     	coordsTextView.setText(sb.toString());
     }
     
+    
+//    /************ CITYGRID APIS *******************/
+//    
+//    boolean citygridRunning = false;
+//    
+//    void searchCityGridOffers() {
+//    	if (citygridRunning) return;
+//    	citygridRunning = true;
+//    	try {
+//	    	Log.v("CITYGRID", "searchCityGridOffers()");
+//	    	CityGrid.setPublisher("test");
+//	    	CityGrid.setDebug(true);
+//	    	CityGrid.setSimulation(true);
+//	    	CityGridTask cgtask = new CityGridTask();
+//	    	cgtask.execute();
+//    	}
+//    	catch (Exception e) {
+//    		Log.v("EXCEPTION", e.getMessage());
+//    	}
+//    }
+//    
+//    private class CityGridTask extends AsyncTask<Void,Void,Object> {
+//    	protected Object doInBackground(Void... args) {
+//    		try {
+//	    		CGOffersSearch search = CityGrid.offersSearch();
+//	    		search.setWhat("restaurant");
+//	    		search.setLatlon(new CGLatLon(latitude,longitude));
+//	    		CGOffersSearchResults results = search.search();
+//	    		for (CGOffersOffer offer : results.getOffers()) {
+//	    			Log.v("CITYGRID", offer.getTitle());
+//	    		}
+//    		}
+//    		catch (Exception e) {
+//    			Log.v("EXCEPTION", e.getMessage());
+//    		}
+//    		return null;
+//    	}
+//    	protected void onPostExecute(Object response) {
+//    		citygridRunning = false;
+//    	}
+//    }
+//    
     
     /************** JSON REST APIs ***********/
 
@@ -578,6 +634,12 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     
     /**************************** TEXT/SPEECH STUFF BELOW ******************/
     
+    @Override
+    public void onUtteranceCompleted(String utteranceId) {
+    	Log.v("TTS", "Utterance completed: " + utteranceId);
+    	currentlySpeaking = false;
+    	condwait.setRunStatus(true);
+    }
 
 	@Override
 	protected void onDestroy() {
@@ -601,11 +663,12 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	//see if the TTS data components need to be installed.
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-	 // if acitivity responding is TTS to this
+	 // if activity responding is TTS to this
 	  if (requestCode == MY_DATA_CHECK_CODE) {
 	        if (resultCode == TextToSpeech.Engine.CHECK_VOICE_DATA_PASS) {
 	            // success, create the TTS instance
 	            mTts = new TextToSpeech(this, this);
+	            mTts.setOnUtteranceCompletedListener(this);
 	            System.err.println("hit the resultCode if\n");
 	        } else {
 	            // missing data, install it
@@ -627,27 +690,27 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	@Override
 	public void onInit(int status) {
 		if(status == TextToSpeech.ERROR){
-			System.out.println("Test to speech engine intialization failed\n");
+			System.out.println("Text to speech engine intialization failed\n");
 			return;
 		}
 		mTts.setLanguage(Locale.US);
 		ttsReady = true;
+		mTts.setOnUtteranceCompletedListener(this);
 		welcomeScreen();
-		locProviderThread.execute();
 	}
-	private void pauseTillSpeechFinished()
-	{
-		while(mTts.isSpeaking()){//i want the UI to pause while the speech even is going on.
-			try {
-				System.out.println("still speaking");
-				Thread.sleep(10);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-		}
-		//e.getMessage();
-		//e.printStackTrace();	
-	}
+//	private void pauseTillSpeechFinished()
+//	{
+//		while(mTts.isSpeaking()){//i want the UI to pause while the speech even is going on.
+//			try {
+//				System.out.println("still speaking");
+//				Thread.sleep(10);
+//			} catch (InterruptedException e) {
+//				e.printStackTrace();
+//			}
+//		}
+//		//e.getMessage();
+//		//e.printStackTrace();	
+//	}
 	//MAKE SURE ALL STRINGS ARE IN LOWER CASE
 	private void welcomeScreen(){
 		try {
@@ -658,8 +721,15 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 				mTts.speak(s, TextToSpeech.QUEUE_ADD, null);
 				mTts.playSilence(silenceTime, TextToSpeech.QUEUE_ADD, null);
 			}
+			
+			HashMap<String,String> params = new HashMap<String,String>();
+			String keystr = /*mTts.getDefaultEngine()+"."+*/TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID;
+			Log.v("TTS", keystr);
+			params.put(keystr, "somevalue");
+			mTts.playSilence(silenceTime, TextToSpeech.QUEUE_ADD, params);
+			currentlySpeaking = true;
 			reset_input_state();
-			pauseTillSpeechFinished();
+			//pauseTillSpeechFinished();
 		}
 		catch (Exception e) {
 			Log.v("EXCEPTION", e.getMessage());
@@ -668,20 +738,26 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	//
 	private void speakText(String text, boolean isSpeechInput) {
 		try {
+			HashMap<String,String> params = new HashMap<String,String>();
+			params.put(mTts.getDefaultEngine()+TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "somevalue");
+			
 			if(isSpeechInput){
 				String search = text.toLowerCase();
 				if(optionsList.containsKey(search)){
 					currentInputOption = optionsList.get(search);
 				}
 				else{
-					mTts.speak("Could not identify input. Please double tap and speak again.", TextToSpeech.QUEUE_FLUSH, null);
+					mTts.speak("Could not identify input. Please double tap and speak again.", TextToSpeech.QUEUE_FLUSH, params);
+					currentlySpeaking = true;
 					reset_input_state();
-					pauseTillSpeechFinished();
+					//pauseTillSpeechFinished();
 				}
-				mTts.speak("You entered" + text, TextToSpeech.QUEUE_ADD, null);
+				mTts.speak("You entered" + text, TextToSpeech.QUEUE_ADD, params);
+				currentlySpeaking = true;
 			}
 			else{
-				mTts.speak(text, TextToSpeech.QUEUE_ADD, null);
+				mTts.speak(text, TextToSpeech.QUEUE_ADD, params);
+				currentlySpeaking = true;
 				reset_input_state();
 			}
 		}
@@ -696,7 +772,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
      * Fire an intent to start the speech recognition activity.
      */
     private void startVoiceRecognitionActivity() {
-        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH); //create intexnt with speech recognition option.
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH); //create intent with speech recognition option.
 
         // Specify the calling package to identify your application
         //intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getClass().getPackage().getName());
@@ -718,8 +794,6 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
         	Log.v("EXCEPTION", e.getMessage());
         }
     }
-    
-    
     
     //gesture detector stuff(listener)
     /** A simple sub class of gesturelistener to handle gesture results. 
