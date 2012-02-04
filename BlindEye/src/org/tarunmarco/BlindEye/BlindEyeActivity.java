@@ -53,7 +53,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     
     // text/speech related member variables
 	public enum INPUT_OPTION_TYPE{
-		NAVIGATE, LOCATION, FLAG, NOINPUT
+		NAVIGATE, LOCATION, FLAG, AROUND_ME, RESTAURANT, NOINPUT
 	}
 	INPUT_OPTION_TYPE currentInputOption = INPUT_OPTION_TYPE.NOINPUT; 
 	//this should be the set option after input processing is completed(usually on speaking some text).
@@ -89,9 +89,12 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 
         ///////////////////// TEXT/SPEECH STUFF BELOW ///////////
         optionsList.clear();
-        optionsList.put("navigate", INPUT_OPTION_TYPE.NAVIGATE);
         optionsList.put("location", INPUT_OPTION_TYPE.LOCATION);
-    	optionsList.put("flag", INPUT_OPTION_TYPE.FLAG);
+        optionsList.put("navigate", INPUT_OPTION_TYPE.NAVIGATE);
+        optionsList.put("around me", INPUT_OPTION_TYPE.AROUND_ME);
+        optionsList.put("restaurant", INPUT_OPTION_TYPE.RESTAURANT);
+        
+    	//optionsList.put("flag", INPUT_OPTION_TYPE.FLAG);
     	reset_input_state();
     	
         //check if the text to speech engine components are there or not.
@@ -739,6 +742,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 					reset_input_state();
 					//pauseTillSpeechFinished();
 				}
+				Log.v("INPUT Recognizser: ", search);
 				mTts.speak("You entered" + text, TextToSpeech.QUEUE_ADD, params);
 				currentlySpeaking = true;
 			}
