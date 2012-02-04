@@ -25,6 +25,7 @@ import android.content.pm.ResolveInfo;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.location.LocationProvider;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.speech.RecognizerIntent;
@@ -53,7 +54,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     
     // text/speech related member variables
 	public enum INPUT_OPTION_TYPE{
-		NAVIGATE, LOCATION, FLAG, AROUND_ME, RESTAURANT, NOINPUT
+		NAVIGATE, LOCATION, FLAG, AROUND_ME, RESTAURANT, RESULT1, RESULT2, RESULT3, NOINPUT
 	}
 	INPUT_OPTION_TYPE currentInputOption = INPUT_OPTION_TYPE.NOINPUT; 
 	//this should be the set option after input processing is completed(usually on speaking some text).
@@ -74,7 +75,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	
 	private static final int VOICE_RECOGNITION_REQUEST_CODE = 1234;	
 	
-	//private ConditionalWait condwait;
+	private ConditionalWait condwait;
 	
 	
 	 /** Called when the activity is first created. */
@@ -92,7 +93,10 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
         optionsList.put("location", INPUT_OPTION_TYPE.LOCATION);
         optionsList.put("navigate", INPUT_OPTION_TYPE.NAVIGATE);
         optionsList.put("around me", INPUT_OPTION_TYPE.AROUND_ME);
-        optionsList.put("restaurant", INPUT_OPTION_TYPE.RESTAURANT);
+        //optionsList.put("restaurant", INPUT_OPTION_TYPE.RESTAURANT);
+        optionsList.put("result one", INPUT_OPTION_TYPE.RESULT1);
+        optionsList.put("result two", INPUT_OPTION_TYPE.RESULT2);
+        optionsList.put("result three", INPUT_OPTION_TYPE.RESULT3);
         
     	//optionsList.put("flag", INPUT_OPTION_TYPE.FLAG);
     	reset_input_state();
@@ -128,9 +132,10 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 				data.add(line);
 			}
 			Log.e("LOCATION_FILE_READING", data.size() + " lines");
-			//condwait = new ConditionalWait();
-			//condwait.setRunStatus(false);
-			locProviderThread = new MockLocationProvider(locManager, locProviderString, data /*, condwait*/);
+			condwait = new ConditionalWait();
+			condwait.setRunStatus(false);
+			Log.v("MAIN", "condwait false onCreate");
+			locProviderThread = new MockLocationProvider(locManager, locProviderString, data, condwait);
 			locProviderThread.execute();
 			Log.v("MAIN", "end of onCreate");
 		} catch (IOException e) {
@@ -178,7 +183,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     	}
     	
     	updateTextViewWithLocation();
-    	//searchForLocationAddress();
+    	searchForNearestIntersection();
     }
     
     private void updateTextViewWithLocation() {
@@ -216,8 +221,10 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     	public static final String GOOGLE_PLACE_SEARCH = "https://maps.googleapis.com/maps/api/place/search/json";
     	//public static final String GOOGLE_REVERSE_GEOCODE = "https://maps.googleapis.com/maps/api/geocode/json";
     	public static final String GOOGLE_DIRECTIONS = "https://maps.googleapis.com/maps/api/directions/json";
-    	private static final String GOOGLE_API_KEY = "AIzaSyB-1QyezeCVBLlqe1cbZ9eqgMibnPk37TU";
+    	//private static final String GOOGLE_API_KEY = "AIzaSyB-1QyezeCVBLlqe1cbZ9eqgMibnPk37TU";
+    	private static final String GOOGLE_API_KEY = "AIzaSyA1fYR83jWiuK3cVsL9yoUnRtyUUV6-uyA";
     	public static final String GEONAMES_REVERSE_GEOCODE = "http://api.geonames.org/findNearestAddressJSON";
+    	public static final String GEONAMES_INTERSECTION = "http://api.geonames.org/findNearestIntersectionJSON";
     	public static final String GEONAMES_USER = "elixiroflife4u";
     	
     	public APIRequestTask(String url, JSONVisitor visitor) {
@@ -274,6 +281,104 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     
     private static final int API_WAIT_SECONDS = 10;
     
+    
+    /************** GEONAMES NEAREST INTERSECTION **********/
+    
+    APIRequestTask intersectionTask = null;
+    NearestIntersectionResponse lastIntersection = null;
+    
+    private class NearestIntersectionResponse {
+    	public String street1, street2;
+    	public double latitude, longitude;
+    	public double distance;
+    	
+    	public NearestIntersectionResponse() {
+    		street1 = street2 = "";
+    		latitude = longitude = distance = Double.NaN;
+    	}
+    };
+    
+    private void searchForNearestIntersection() {
+    	// check if there is an existing lookup
+    	if (intersectionTask != null) {
+    		long curtime = System.currentTimeMillis();
+    		// if it was too long ago, cancel it
+    		if (curtime - intersectionTask.getTimestamp() >= API_WAIT_SECONDS*1000) {
+    			Log.v("MAIN", "canceling current intersection lookup");
+    			intersectionTask.cancel(true);
+    		}
+    		else {
+    			// let the previous lookup finish
+    			Log.v("MAIN", "intersection lookup is already in progress");
+    			return;
+    		}
+    	}
+    	// new async task for intersection lookup
+    	intersectionTask = new APIRequestTask(APIRequestTask.GEONAMES_INTERSECTION, new NearestIntersectionVisitor());
+    	intersectionTask.setParam("username", APIRequestTask.GEONAMES_USER);
+    	intersectionTask.setParam("lat", Double.toString(latitude));
+    	intersectionTask.setParam("lng", Double.toString(longitude));
+    	intersectionTask.execute();
+    }
+    
+    private void speakCurrentIntersection() {
+    	double distFeet = 3281.0 * lastIntersection.distance;
+		String message = "About " + Math.round(distFeet) + " feet to " + lastIntersection.street1 + " and " + lastIntersection.street2;
+		speakText(message, false, "inter");
+    }
+    
+    private void didFindNearestIntersection(NearestIntersectionResponse response) {
+    	if (response == null) {
+    		Log.v("MAIN", "nearest intersection lookup failed!");
+    	}
+    	else {
+    		lastIntersection = response;
+    		double distFeet = 3281.0 * lastIntersection.distance;
+    		String addrStr = Math.round(distFeet) + " feet to " + response.street1 + " and " + response.street2;
+    		Log.v("MAIN", "Intersection: "+addrStr);
+    		addrTextView.setText(addrStr);
+    		
+    		if (distFeet < 100.f) {
+    			speakCurrentIntersection();
+    		}
+    	}
+    	intersectionTask = null;
+    }
+    
+    private class NearestIntersectionVisitor implements JSONVisitor {
+    	public Object visit(JSONObject root) {
+    		try {
+	    		// get address object
+	    		if (!root.has("intersection"))
+	    			return null;
+	    		JSONObject interObj = root.getJSONObject("intersection");
+	    		
+	    		NearestIntersectionResponse intersectionResponse = new NearestIntersectionResponse();
+	    		String st1 = interObj.has("street1") ? interObj.getString("street1") : "";
+	    		String st2 = interObj.has("street2") ? interObj.getString("street2") : "";
+	    		intersectionResponse.latitude = interObj.has("lat") ? Double.parseDouble(interObj.getString("lat")) : Double.NaN;
+	    		intersectionResponse.longitude = interObj.has("lng") ? Double.parseDouble(interObj.getString("lng")) : Double.NaN;
+	    		intersectionResponse.distance = interObj.has("distance") ? Double.parseDouble(interObj.getString("distance")) : Double.NaN;
+	    		
+	    		intersectionResponse.street1 = st1.replace("Ave", "Avenue").replace("Blvd","Boulevard").replace("St", "Street");
+	    		intersectionResponse.street2 = st2.replace("Ave", "Avenue").replace("Blvd","Boulevard").replace("St", "Street");
+	    		
+	    		return intersectionResponse;
+    		}
+    		catch (Exception e) {
+    			Log.v("EXCEPTION", e.getMessage());
+    		}
+    		return null;
+    	}
+    	public void complete(Object response) {
+    		// callback method in main Activity
+    		didFindNearestIntersection((NearestIntersectionResponse)response);
+    	}
+    }
+    
+    
+    
+    
     /************** GEONAMES REVERSE GEOCODING **********/
     
     APIRequestTask geocodeTask = null;
@@ -310,6 +415,30 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     	geocodeTask.execute();
     }
     
+    private void speakCurrentLocationAndIntersection() {
+    	String st = lastGeocode.street;
+    	String message = lastGeocode.streetNumber + " " + st + ",";
+    	
+    	long distFeet = Math.round(3281.0 * lastIntersection.distance);
+		message += " about " + distFeet + " feet to " + lastIntersection.street1 + " and " + lastIntersection.street2;
+		speakText(message, false, "loc_inter");
+    	
+    }
+    
+    private void speakLocalPlaces() {
+    	
+    	int count = lastPlacesResponse.results.length;
+    	if (count > 2) count = 2;
+    	
+    	String message = "";
+    	for (int i = 0; i < count; i++) {
+    		GooglePlacesResult r = lastPlacesResponse.results[i];
+    		message += "Result " + (i+1) + ": " + r.name + ".";
+    	}
+    	    	
+    	speakText(message, false, "places");
+    }
+    
     private void didCompleteReverseGeocode(ReverseGeocodeResponse response) {
     	if (response == null) {
     		Log.v("MAIN", "reverse geocode failed!");
@@ -319,6 +448,11 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     		String addrStr = response.streetNumber + " " + response.street + " " + response.place + " " + response.postalcode + " " + response.countryCode;
     		Log.v("MAIN", "Geocode: "+addrStr);
     		addrTextView.setText(addrStr);
+    		
+    		// handle user speech request
+    		if (speechState == INPUT_OPTION_TYPE.LOCATION) {
+    			speakCurrentLocationAndIntersection();
+    		}
     	}
     	geocodeTask = null;
     }
@@ -332,10 +466,12 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	    		JSONObject addrObj = root.getJSONObject("address");
 	    		ReverseGeocodeResponse geocodeResponse = new ReverseGeocodeResponse();
 	    		geocodeResponse.streetNumber = addrObj.has("streetNumber") ? addrObj.getString("streetNumber") : "";
-	    		geocodeResponse.street       = addrObj.has("street")       ? addrObj.getString("street")       : "";
+	    		String st                    = addrObj.has("street")       ? addrObj.getString("street")       : "";
 	    		geocodeResponse.place        = addrObj.has("placename")    ? addrObj.getString("placename")    : "";
 	    		geocodeResponse.postalcode   = addrObj.has("postalcode")   ? addrObj.getString("postalcode")   : "";
 	    		geocodeResponse.countryCode  = addrObj.has("countryCode")  ? addrObj.getString("countryCode")  : "";
+	    		
+	    		geocodeResponse.street = st.replace("Ave", "Avenue").replace("Blvd", "Boulevard").replace("St", "Street");
 	    		return geocodeResponse;
     		}
     		catch (Exception e) {
@@ -429,10 +565,16 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     			sb.append("("); sb.append(r.latitude); sb.append(","); sb.append(r.longitude); sb.append(")\n");
     		}
     		addrTextView.setText(sb.toString());
+    		
+    		// speak places
+    		speakLocalPlaces();
     	}
     	else if (response.status.equals("ZERO_RESULTS")) {
     		Log.v("MAIN", "places search had no results");
     		addrTextView.setText("No results.");
+    		
+    		// speak "no places found"
+    		speakText("No places found.", false, "places");
     	}
     	else {
     		Log.v("MAIN", "places search bad response: "+response.status);
@@ -628,8 +770,25 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     @Override
     public void onUtteranceCompleted(String utteranceId) {
     	Log.v("TTS", "Utterance completed: " + utteranceId);
+    	if (utteranceId.equals("welcome")) {
+    		// start location monitoring
+    //		condwait.setRunStatus(true);
+    		Log.v("SPEECH", "done saying welcome message");
+    	}
+    	else if (utteranceId.equals("loc_inter")) {
+    		// start location monitoring
+    //		condwait.setRunStatus(true);
+    		speechState = INPUT_OPTION_TYPE.NOINPUT;
+    		Log.v("SPEECH", "done saying location & intersection");
+    	}
+    	else if (utteranceId.equals("places")) {
+    		speechState = INPUT_OPTION_TYPE.NOINPUT;
+    		Log.v("SPEECH", "done saying location");
+    	}
+    	speechState = INPUT_OPTION_TYPE.NOINPUT;
+    	condwait.setRunStatus(true);
     	currentlySpeaking = false;
-    	//condwait.setRunStatus(true);
+    	Log.v("MAIN", "condwait true");
     }
 
 	@Override
@@ -650,6 +809,10 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	private void reset_input_state(){
 		currentInputOption = INPUT_OPTION_TYPE.NOINPUT;
 	}
+	
+	// current state in speech recognition
+	private INPUT_OPTION_TYPE speechState = INPUT_OPTION_TYPE.NOINPUT;
+	
 	//Text To Speech related stuff.
 	//see if the TTS data components need to be installed.
 	@Override
@@ -670,11 +833,38 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	            startActivity(installIntent);
 	        }
 	    } else if(requestCode == VOICE_RECOGNITION_REQUEST_CODE && resultCode == RESULT_OK){
+	    	//doingSpeechRecognition = false;
 	    	//get the array of suspected results using the extra_results tag
 	    	ArrayList<String> matches = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
 	    	if(matches.size() > 0){
 	    		recognizerEvent.setText(matches.get(0));
-	    		speakText(matches.get(0), true);
+	    		speakText(matches.get(0), true, matches.get(0));
+	    		//check what input type it is
+//	    		if(currentInputOption == INPUT_OPTION_TYPE.LOCATION || 
+//	    			currentInputOption == INPUT_OPTION_TYPE.AROUND_ME){
+//	    			condwait.setRunStatus(false);
+//	    			if(currentInputOption == INPUT_OPTION_TYPE.LOCATION){
+//	    				
+//	    			}else{
+//	    				
+//	    			}
+//	    		}
+	    		if(currentInputOption == INPUT_OPTION_TYPE.LOCATION) {
+	    			condwait.setRunStatus(false);
+	    			Log.v("MAIN", "condwait false onActivity result location");
+	    			speechState = INPUT_OPTION_TYPE.LOCATION;
+	    			searchForLocationAddress();
+	    		}
+	    		
+	    		else if (currentInputOption == INPUT_OPTION_TYPE.AROUND_ME) {
+	    			condwait.setRunStatus(false);
+	    			Log.v("MAIN", "condwait false onActivity result around me");
+	    			speechState = INPUT_OPTION_TYPE.AROUND_ME;
+	    			searchForPlaces();
+	    		}
+	    		//freeze the gps data
+	    		//handle the request
+	    		//resume the data stream
 	    	}
 	    }
 	}
@@ -709,6 +899,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 			//mTts.addSpeech(myText1,"/sdcard/welcome.wav"); //doesn't work
 			mTts.speak(myText1, TextToSpeech.QUEUE_FLUSH, null);
 			for(String s : optionsList.keySet()){
+				if (s.startsWith("result")) continue;
 				mTts.speak(s, TextToSpeech.QUEUE_ADD, null);
 				mTts.playSilence(silenceTime, TextToSpeech.QUEUE_ADD, null);
 			}
@@ -716,7 +907,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 			HashMap<String,String> params = new HashMap<String,String>();
 			String keystr = TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID;
 			Log.v("TTS", keystr);
-			params.put(keystr, "somevalue");
+			params.put(keystr, "welcome");
 			mTts.playSilence(1, TextToSpeech.QUEUE_ADD, params);
 			currentlySpeaking = true;
 			reset_input_state();
@@ -726,10 +917,10 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 		}
 	}
 	//
-	private void speakText(String text, boolean isSpeechInput) {
+	private void speakText(String text, boolean isSpeechInput, String tag) {
 		try {
 			HashMap<String,String> params = new HashMap<String,String>();
-			params.put(mTts.getDefaultEngine()+TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "somevalue");
+			params.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, tag);
 			
 			if(isSpeechInput){
 				String search = text.toLowerCase();
@@ -739,7 +930,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 				else{
 					mTts.speak("Could not identify input. Please double tap and speak again.", TextToSpeech.QUEUE_FLUSH, params);
 					currentlySpeaking = true;
-					reset_input_state();
+					//reset_input_state();
 					//pauseTillSpeechFinished();
 				}
 				Log.v("INPUT Recognizser: ", search);
@@ -749,7 +940,8 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 			else{
 				mTts.speak(text, TextToSpeech.QUEUE_ADD, params);
 				currentlySpeaking = true;
-				reset_input_state();
+				//reset_input_state();
+				Log.v("MAIN", "called mtts.speak()");
 			}
 		}
 		catch (Exception e) {
@@ -758,11 +950,19 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	}
 	//end Txt to speech related stuff.//
 	
+	//boolean doingSpeechRecognition = false;
+	
 	//Speech recognition stuff //
 	 /**
      * Fire an intent to start the speech recognition activity.
      */
     private void startVoiceRecognitionActivity() {
+    	
+    	//doingSpeechRecognition = true;
+    	// stop location gathering
+    	condwait.setRunStatus(false);
+    	Log.v("MAIN", "condwait false");
+    	
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH); //create intent with speech recognition option.
 
         // Specify the calling package to identify your application
@@ -793,6 +993,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 		@Override
 		public boolean onDoubleTap(MotionEvent e) {
 			if(ttsReady == true){
+				
 				gestureEvent.setText("onDoubleTap: \n" + e.toString());
 				startVoiceRecognitionActivity(); //start voice recognition activity
 			}
