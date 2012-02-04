@@ -1,5 +1,5 @@
 *.class
-HapticMobileGame/bin/*
-HapticMobileGame/gen/*
+BlindEye/bin/*
+BlindEye/gen/*
 .DS_Store*
 .metadata
