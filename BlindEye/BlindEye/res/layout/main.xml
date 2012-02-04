@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    android:orientation="vertical" >
+
+    <TextView
+        android:id="@+id/myTextView"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="0.25"
+        android:text="" />
+    
+    <TextView
+        android:id="@+id/myTextView2"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="0.25"
+        android:text="" />
+    
+    <TextView
+       android:id="@+id/GestureEvent"
+       android:layout_width="fill_parent"
+       android:layout_height="wrap_content"
+       android:layout_weight="0.25" />
+    
+   <TextView
+       android:id="@+id/RecognitionEvent"
+       android:layout_width="fill_parent"
+       android:layout_height="wrap_content"
+       android:layout_weight="0.25" />
+
+</LinearLayout>
