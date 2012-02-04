@@ -9,43 +9,38 @@ import android.os.AsyncTask;
 import android.util.Log;
 
 public class MockLocationProvider extends AsyncTask<Void, Void, Void> {
-	private final long sleepTime = 6000; //2 second
+	private final long sleepTime = 6000; // 6 second
 	private List<String> data;
 	private LocationManager locationManager;
 	private String mockLocationProvider;
 	private String LOG_TAG = "MOCK_LOCATION_PROVIDER";
-	private ConditionalWait condwait;
+	//private ConditionalWait condwait;
 	//constructor
 	public MockLocationProvider(LocationManager locationManager, 
-			String mockLocationProvider, List<String> data, ConditionalWait condwait) throws IOException{
+			String mockLocationProvider, List<String> data /*, ConditionalWait condwait*/) throws IOException{
 		this.data = data;
 		this.locationManager = locationManager;
 		this.mockLocationProvider = mockLocationProvider;
-		this.condwait = condwait;
+		//this.condwait = condwait;
 	}
 	//The run method. The thread will wake up every specified seconds and provide a location to the loc 
 	@Override
 	protected Void doInBackground(Void... params) {
-		try{
-		Thread.sleep(sleepTime);
-		}catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-		
+		// for each location
 		for (String str : data) {
+			// sleep for some time between locations
             try {
-            	condwait.locationProviderProceed();
+            	//condwait.locationProviderProceed();
                 Thread.sleep(sleepTime);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            
             // Set one position
             String[] parts = str.split(",");
             Double latitude = Double.valueOf(parts[0]);
             Double longitude = Double.valueOf(parts[1]);
             
-            //Make a location object with the given lattitude and longitude
+            //Make a location object with the given latitude and longitude
             Location location = new Location(mockLocationProvider);
             location.setLatitude(latitude);
             location.setLongitude(longitude);

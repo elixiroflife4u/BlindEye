@@ -17,13 +17,6 @@ import java.util.Scanner;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-
-//import com.citygrid.CGLatLon;
-//import com.citygrid.CityGrid;
-//import com.citygrid.content.offers.CGOffersOffer;
-//import com.citygrid.content.offers.search.CGOffersSearch;
-//import com.citygrid.content.offers.search.CGOffersSearchResults;
-
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -49,7 +42,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	private String locProviderString = LocationManager.GPS_PROVIDER;
 	private LocationManager locManager;
 	private String gpsInputFile = "straight_locations.txt";
-		
+	
 	// location-related member variables
 	private double latitude;
     private double longitude;
@@ -65,7 +58,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	INPUT_OPTION_TYPE currentInputOption = INPUT_OPTION_TYPE.NOINPUT; 
 	//this should be the set option after input processing is completed(usually on speaking some text).
 	
-	Map<String, INPUT_OPTION_TYPE> optionsList = new HashMap<String, INPUT_OPTION_TYPE>();
+	Map<String,INPUT_OPTION_TYPE> optionsList = new HashMap<String, INPUT_OPTION_TYPE>();
 		
 	private final int MY_DATA_CHECK_CODE = 4567;
 	private TextToSpeech mTts;
@@ -81,7 +74,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	
 	private static final int VOICE_RECOGNITION_REQUEST_CODE = 1234;	
 	
-	private ConditionalWait condwait;
+	//private ConditionalWait condwait;
 	
 	
 	 /** Called when the activity is first created. */
@@ -92,7 +85,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
         coordsTextView = (TextView) findViewById(R.id.myTextView);
         addrTextView = (TextView) findViewById(R.id.myTextView2);
         coordsTextView.setText("waiting for location...");
-        addrTextView.setText("waiting for address...");
+        addrTextView.setText("");
 
         ///////////////////// TEXT/SPEECH STUFF BELOW ///////////
         optionsList.clear();
@@ -109,7 +102,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
         gestureEvent = (TextView)findViewById(R.id.GestureEvent);
         recognizerEvent = (TextView)findViewById(R.id.RecognitionEvent);
         
-        ///// Speach recognition related stuff 
+        ///// Speech recognition related stuff 
         PackageManager pm = getPackageManager();
         List<ResolveInfo> activities = pm.queryIntentActivities(
                 new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH), 0);
@@ -132,27 +125,25 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 				data.add(line);
 			}
 			Log.e("LOCATION_FILE_READING", data.size() + " lines");
-			condwait = new ConditionalWait();
-			condwait.setRunStatus(false);
-			locProviderThread = new MockLocationProvider(locManager, locProviderString, data, condwait);
+			//condwait = new ConditionalWait();
+			//condwait.setRunStatus(false);
+			locProviderThread = new MockLocationProvider(locManager, locProviderString, data /*, condwait*/);
 			locProviderThread.execute();
+			Log.v("MAIN", "end of onCreate");
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		/*
-        Location lastKnownLocation = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);  
-        if (lastKnownLocation != null) {
-	        latitude = lastKnownLocation.getLatitude();
-	        longitude = lastKnownLocation.getLongitude();
-	        if (lastKnownLocation.hasBearing()) {
-	        	haveBearing = true;
-	        	bearing = lastKnownLocation.getBearing();
-	        }
-	        updateTextViewWithLocation();
-	        searchForLocationAddress();
-        }
-        */
-    	//
+//        // use last known location
+//        Location lastKnownLocation = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);  
+//        if (lastKnownLocation != null) {
+//	        latitude = lastKnownLocation.getLatitude();
+//	        longitude = lastKnownLocation.getLongitude();
+//	        if (lastKnownLocation.hasBearing()) {
+//	        	haveBearing = true;
+//	        	bearing = lastKnownLocation.getBearing();
+//	        }
+//	        updateTextViewWithLocation();
+//        }
     }
     //////// END onCreate //////////
 //////Mock GPS location stuff. Will have to be changed when using a real GPS.
@@ -172,18 +163,19 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	public void onStatusChanged(String provider, int status, Bundle extras) {
 		return;
 	}
+	
+	// save location and update views
     private void makeUseOfNewLocation(Location location) {
     	latitude = location.getLatitude();
     	longitude = location.getLongitude();
     	
-    	if (location.hasBearing()) {
+    	if (location.hasBearing()) {	// currently we don't have bearing
     		haveBearing = true;
     		bearing = location.getBearing();
     	}
     	
     	updateTextViewWithLocation();
-    	searchForLocationAddress();
-    	//searchCityGridOffers();
+    	//searchForLocationAddress();
     }
     
     private void updateTextViewWithLocation() {
@@ -201,48 +193,6 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     }
     
     
-//    /************ CITYGRID APIS *******************/
-//    
-//    boolean citygridRunning = false;
-//    
-//    void searchCityGridOffers() {
-//    	if (citygridRunning) return;
-//    	citygridRunning = true;
-//    	try {
-//	    	Log.v("CITYGRID", "searchCityGridOffers()");
-//	    	CityGrid.setPublisher("test");
-//	    	CityGrid.setDebug(true);
-//	    	CityGrid.setSimulation(true);
-//	    	CityGridTask cgtask = new CityGridTask();
-//	    	cgtask.execute();
-//    	}
-//    	catch (Exception e) {
-//    		Log.v("EXCEPTION", e.getMessage());
-//    	}
-//    }
-//    
-//    private class CityGridTask extends AsyncTask<Void,Void,Object> {
-//    	protected Object doInBackground(Void... args) {
-//    		try {
-//	    		CGOffersSearch search = CityGrid.offersSearch();
-//	    		search.setWhat("restaurant");
-//	    		search.setLatlon(new CGLatLon(latitude,longitude));
-//	    		CGOffersSearchResults results = search.search();
-//	    		for (CGOffersOffer offer : results.getOffers()) {
-//	    			Log.v("CITYGRID", offer.getTitle());
-//	    		}
-//    		}
-//    		catch (Exception e) {
-//    			Log.v("EXCEPTION", e.getMessage());
-//    		}
-//    		return null;
-//    	}
-//    	protected void onPostExecute(Object response) {
-//    		citygridRunning = false;
-//    	}
-//    }
-//    
-    
     /************** JSON REST APIs ***********/
 
     // interface for custom visitors that examine the JSON result from some API
@@ -258,6 +208,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     	private Map<String,String> params;
     	private String url;
     	private JSONVisitor visitor;
+    	private long timestamp;
     	
     	public static final String GOOGLE_PLACE_SEARCH = "https://maps.googleapis.com/maps/api/place/search/json";
     	//public static final String GOOGLE_REVERSE_GEOCODE = "https://maps.googleapis.com/maps/api/geocode/json";
@@ -270,6 +221,10 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     		this.url = url;
     		this.params = new HashMap<String,String>();
     		this.visitor = visitor;
+    		this.timestamp = System.currentTimeMillis();
+    	}
+    	public long getTimestamp() {
+    		return timestamp;
     	}
     	public void setParam(String name, String value) {
     		params.put(name, value);
@@ -314,10 +269,12 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     	}
     }
     
+    private static final int API_WAIT_SECONDS = 10;
     
     /************** GEONAMES REVERSE GEOCODING **********/
     
     APIRequestTask geocodeTask = null;
+    ReverseGeocodeResponse lastGeocode = null;
     
     private class ReverseGeocodeResponse {
     	public String postalcode;
@@ -328,12 +285,19 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     }
     
     private void searchForLocationAddress() {
-    	// text view gets 'pending' message
-    	addrTextView.setText("waiting for address...");
-    	// cancel any existing task
+    	// check if there is an existing lookup
     	if (geocodeTask != null) {
-    		Log.v("MAIN", "canceling current reverse geocode lookup");
-    		geocodeTask.cancel(true);
+    		long curtime = System.currentTimeMillis();
+    		// if it was too long ago, cancel it
+    		if (curtime - geocodeTask.getTimestamp() >= API_WAIT_SECONDS*1000) {
+    			Log.v("MAIN", "canceling current address lookup");
+    			geocodeTask.cancel(true);
+    		}
+    		else {
+    			// let the previous lookup finish
+    			Log.v("MAIN", "address lookup is already in progress");
+    			return;
+    		}
     	}
     	// new async task for google places request
     	geocodeTask = new APIRequestTask(APIRequestTask.GEONAMES_REVERSE_GEOCODE, new ReverseGeocodeVisitor());
@@ -345,12 +309,15 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     
     private void didCompleteReverseGeocode(ReverseGeocodeResponse response) {
     	if (response == null) {
-    		addrTextView.setText("Internal failure.");
+    		Log.v("MAIN", "reverse geocode failed!");
     	}
     	else {
-    		addrTextView.setText(response.streetNumber + " " + response.street + " " + 
-    							 response.place + " " + response.postalcode + " " + response.countryCode);
+    		lastGeocode = response;
+    		String addrStr = response.streetNumber + " " + response.street + " " + response.place + " " + response.postalcode + " " + response.countryCode;
+    		Log.v("MAIN", "Geocode: "+addrStr);
+    		addrTextView.setText(addrStr);
     	}
+    	geocodeTask = null;
     }
     
     private class ReverseGeocodeVisitor implements JSONVisitor {
@@ -385,6 +352,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     
     // save pending task
     APIRequestTask placesSearchTask = null;
+    PlacesSearchResponse lastPlacesResponse = null;
     
     // container for a google places result
     private class GooglePlacesResult {
@@ -411,12 +379,17 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     }
     
     private void searchForPlaces() {
-    	// text view gets 'pending' message
-    	addrTextView.setText("waiting for places...");
     	// cancel any existing task
     	if (placesSearchTask != null) {
-    		Log.v("MAIN", "canceling current location lookup");
-    		placesSearchTask.cancel(true);
+    		long curtime = System.currentTimeMillis();
+    		if (curtime - placesSearchTask.getTimestamp() >= API_WAIT_SECONDS*1000) {
+    			Log.v("MAIN", "canceling current location lookup");
+    			placesSearchTask.cancel(true);
+    		}
+    		else {
+    			Log.v("MAIN", "places lookup is already in progress");
+    			return;
+    		}
     	}
     	// new async task for google places request
     	placesSearchTask = new APIRequestTask(APIRequestTask.GOOGLE_PLACE_SEARCH, new PlacesSearchVisitor());
@@ -432,11 +405,15 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     // callback when google places search is complete
     private void didCompletePlacesSearch(PlacesSearchResponse response) {
     	if (response == null) {
-    		addrTextView.setText("Internal failure.");
+    		Log.v("MAIN", "places search failed!");
     	}
     	else if (response.status.equals("OK")) {
+    		// save response
+    		lastPlacesResponse = response;
     		int count = response.results.length;
     		assert(count > 0);
+    		Log.v("MAIN", "got "+count+" place results");
+    		// build string description
     		GooglePlacesResult r = response.results[0];
     		StringBuilder sb = new StringBuilder();
     		sb.append("Found ");
@@ -444,18 +421,21 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     		sb.append(" places.\n");
     		if (r.name != null) { sb.append("NAME:"); sb.append(r.name); sb.append("\n"); }
     		if (r.vicinity != null) { sb.append("VICINITY:"); sb.append(r.vicinity); sb.append("\n"); }
+    		if (!Double.isNaN(r.rating)) { sb.append("RATING: "); sb.append(r.rating); sb.append("/5\n"); }
     		if (!Double.isNaN(r.latitude) && !Double.isNaN(r.longitude)) { 
     			sb.append("("); sb.append(r.latitude); sb.append(","); sb.append(r.longitude); sb.append(")\n");
     		}
-    	
     		addrTextView.setText(sb.toString());
     	}
     	else if (response.status.equals("ZERO_RESULTS")) {
+    		Log.v("MAIN", "places search had no results");
     		addrTextView.setText("No results.");
     	}
     	else {
-    		addrTextView.setText("Failed: " + response.status);
+    		Log.v("MAIN", "places search bad response: "+response.status);
     	}
+    	// clear task var
+    	placesSearchTask = null;
     }
     
     // custom visitor for google places search results
@@ -514,6 +494,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     /************* GOOGLE DIRECTIONS API *****************/
     
     APIRequestTask directionsTask = null;
+    DirectionsSearchResponse lastDirectionsResponse = null;
     
     private class GoogleDirectionsStep {
     	public double startLat, startLng;
@@ -541,13 +522,18 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     }
     
     private void searchForDirections(Location destination) {
-    	// text view gets 'pending' message
-    	addrTextView.setText("waiting for places...");
     	// cancel any existing task
     	if (directionsTask != null) {
-    		Log.v("MAIN", "canceling current directions lookup");
-    		directionsTask.cancel(true);
-    	}
+    		long curtime = System.currentTimeMillis();
+    		if (curtime - directionsTask.getTimestamp() >= API_WAIT_SECONDS*1000) {
+    			Log.v("MAIN", "canceling current directions lookup");
+        		directionsTask.cancel(true);
+    		}
+    		else {
+    			Log.v("MAIN", "directions lookup already in progress");
+    			return;
+    		}
+    	}    	
     	// new async task for google places request
     	directionsTask = new APIRequestTask(APIRequestTask.GOOGLE_DIRECTIONS, new DirectionsSearchVisitor());
     	directionsTask.setParam("sensor", "true");
@@ -560,9 +546,11 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     
     private void didCompleteDirectionsSearch(DirectionsSearchResponse response) {
     	if (response == null) {
-    		addrTextView.setText("Internal failure.");
+    		Log.v("MAIN", "directions search failed!");
     	}
     	else if (response.status.equals("OK")) {
+    		lastDirectionsResponse = response;
+    		// build description string
     		StringBuilder sb = new StringBuilder();
     		if (response.summary != null) {
 	    		sb.append("SUMMARY:");
@@ -576,15 +564,15 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     		int count = response.steps.length;
     		for (int i = 0; i < count; i++) {
     			GoogleDirectionsStep gst = response.steps[i];
-    			sb.append(String.format("\n[%d] (%f,%f) to (%f,%f) {%dm,%ds}", i, 
-    					gst.startLat, gst.startLng, gst.endLat, gst.endLng,
-    					gst.meters, gst.seconds));
+    			sb.append(String.format("\n[%d] %s (%f,%f) to (%f,%f) {%dft,%ds}", i, 
+    					gst.instructions, gst.startLat, gst.startLng, gst.endLat, gst.endLng, Math.round(3.281*gst.meters), gst.seconds));
     		}
     		addrTextView.setText(sb.toString());
     	}
     	else {
-    		addrTextView.setText(response.status);
+    		Log.v("MAIN", "directions search bad response: "+response.status);
     	}
+    	directionsTask = null;
     }
     
     private class DirectionsSearchVisitor implements JSONVisitor {
@@ -638,7 +626,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     public void onUtteranceCompleted(String utteranceId) {
     	Log.v("TTS", "Utterance completed: " + utteranceId);
     	currentlySpeaking = false;
-    	condwait.setRunStatus(true);
+    	//condwait.setRunStatus(true);
     }
 
 	@Override
@@ -690,7 +678,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	@Override
 	public void onInit(int status) {
 		if(status == TextToSpeech.ERROR){
-			System.out.println("Text to speech engine intialization failed\n");
+			Log.v("MAIN", "Text to speech engine intialization failed");
 			return;
 		}
 		mTts.setLanguage(Locale.US);
@@ -723,13 +711,12 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 			}
 			
 			HashMap<String,String> params = new HashMap<String,String>();
-			String keystr = /*mTts.getDefaultEngine()+"."+*/TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID;
+			String keystr = TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID;
 			Log.v("TTS", keystr);
 			params.put(keystr, "somevalue");
-			mTts.playSilence(silenceTime, TextToSpeech.QUEUE_ADD, params);
+			mTts.playSilence(1, TextToSpeech.QUEUE_ADD, params);
 			currentlySpeaking = true;
 			reset_input_state();
-			//pauseTillSpeechFinished();
 		}
 		catch (Exception e) {
 			Log.v("EXCEPTION", e.getMessage());
@@ -809,8 +796,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 		}
 
 		@Override
-		public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
-				float velocityY) {
+		public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
 			gestureEvent.setText("onFling: \n" + e1.toString() + "\n" + e2.toString() +"\n"
 					+ "velocityX= " + String.valueOf(velocityX) + "\n"
 					+ "velocityY= " + String.valueOf(velocityY) + "\n");
