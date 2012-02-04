@@ -97,7 +97,10 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
 	        	bearing = lastKnownLocation.getBearing();
 	        }
 	        updateTextViewWithLocation();
-	        searchForLocationAddress();
+	        Location newLoc = new Location(LocationManager.GPS_PROVIDER);
+	        newLoc.setLatitude(34.002735);
+	        newLoc.setLongitude(-118.40657666666667);
+	        searchForDirections(newLoc);
         }
         
         ///////////////////// TEXT/SPEECH STUFF BELOW ///////////
@@ -171,6 +174,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
     	
     	public static final String GOOGLE_PLACE_SEARCH = "https://maps.googleapis.com/maps/api/place/search/json";
     	//public static final String GOOGLE_REVERSE_GEOCODE = "https://maps.googleapis.com/maps/api/geocode/json";
+    	public static final String GOOGLE_DIRECTIONS = "https://maps.googleapis.com/maps/api/directions/json";
     	private static final String GOOGLE_API_KEY = "AIzaSyB-1QyezeCVBLlqe1cbZ9eqgMibnPk37TU";
     	public static final String GEONAMES_REVERSE_GEOCODE = "http://api.geonames.org/findNearestAddressJSON";
     	public static final String GEONAMES_USER = "elixiroflife4u";
@@ -224,7 +228,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
     }
     
     
-    /************** GOOGLE REVERSE GEOCODING **********/
+    /************** GEONAMES REVERSE GEOCODING **********/
     
     APIRequestTask geocodeTask = null;
     
@@ -418,7 +422,127 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
     	}
     }
     
- 
+    
+    
+    /************* GOOGLE DIRECTIONS API *****************/
+    
+    APIRequestTask directionsTask = null;
+    
+    private class GoogleDirectionsStep {
+    	public double startLat, startLng;
+    	public double endLat, endLng;
+    	public int meters;
+    	public int seconds;
+    	public String instructions;
+    	
+    	public GoogleDirectionsStep() {
+    		startLat = Double.NaN;
+    		startLng = Double.NaN;
+    		endLat = Double.NaN;
+    		endLng = Double.NaN;
+    		meters = -1;
+    		seconds = -1;
+    		instructions = "";
+    	}
+    }
+    
+    private class DirectionsSearchResponse {
+    	public String status;
+    	public String summary;
+    	public String startAddress, endAddress;
+    	public GoogleDirectionsStep steps[];
+    }
+    
+    private void searchForDirections(Location destination) {
+    	// text view gets 'pending' message
+    	addrTextView.setText("waiting for places...");
+    	// cancel any existing task
+    	if (directionsTask != null) {
+    		Log.v("MAIN", "canceling current directions lookup");
+    		directionsTask.cancel(true);
+    	}
+    	// new async task for google places request
+    	directionsTask = new APIRequestTask(APIRequestTask.GOOGLE_DIRECTIONS, new DirectionsSearchVisitor());
+    	directionsTask.setParam("sensor", "true");
+    	directionsTask.setParam("origin", latitude+","+longitude);
+    	directionsTask.setParam("destination", destination.getLatitude()+","+destination.getLongitude());
+    	directionsTask.setParam("units", "imperial");
+    	directionsTask.setParam("mode", "walking");
+    	directionsTask.execute();
+    }
+    
+    private void didCompleteDirectionsSearch(DirectionsSearchResponse response) {
+    	if (response == null) {
+    		addrTextView.setText("Internal failure.");
+    	}
+    	else if (response.status.equals("OK")) {
+    		StringBuilder sb = new StringBuilder();
+    		if (response.summary != null) {
+	    		sb.append("SUMMARY:");
+	    		sb.append(response.summary);
+	    		sb.append("\n");
+    		}
+    		sb.append("START:");
+    		sb.append(response.startAddress);
+    		sb.append("\nEND:");
+    		sb.append(response.endAddress);
+    		int count = response.steps.length;
+    		for (int i = 0; i < count; i++) {
+    			GoogleDirectionsStep gst = response.steps[i];
+    			sb.append(String.format("\n[%d] (%f,%f) to (%f,%f) {%dm,%ds}", i, 
+    					gst.startLat, gst.startLng, gst.endLat, gst.endLng,
+    					gst.meters, gst.seconds));
+    		}
+    		addrTextView.setText(sb.toString());
+    	}
+    	else {
+    		addrTextView.setText(response.status);
+    	}
+    }
+    
+    private class DirectionsSearchVisitor implements JSONVisitor {
+    	public Object visit(JSONObject root) {
+    		try {
+	    		DirectionsSearchResponse response = new DirectionsSearchResponse();
+	    		response.status = root.getString("status");
+	    		if (response.status.equals("OK")) {
+	    			JSONArray routes = root.getJSONArray("routes");
+	    			JSONObject route = routes.getJSONObject(0);
+	    			JSONArray legs = route.getJSONArray("legs");
+	    			JSONObject leg = legs.getJSONObject(0);
+	    			response.startAddress = leg.getString("start_address");
+	    			response.endAddress = leg.getString("end_address");
+	    			JSONArray steps = leg.getJSONArray("steps");
+	    			int nsteps = steps.length();
+	    			response.steps = new GoogleDirectionsStep[nsteps];
+	    			for (int i = 0; i < nsteps; i++) {
+	    				JSONObject step = steps.getJSONObject(i);
+	    				GoogleDirectionsStep gstep = new GoogleDirectionsStep();
+	    				gstep.instructions = step.getString("html_instructions");
+	    				gstep.meters = step.has("distance") ? Integer.parseInt(step.getJSONObject("distance").getString("value")) : -1;
+	    				gstep.seconds = step.has("duration") ? Integer.parseInt(step.getJSONObject("duration").getString("value")) : -1;
+	    				JSONObject loc = step.getJSONObject("start_location");
+	    				gstep.startLat = Double.parseDouble(loc.getString("lat"));
+	    				gstep.startLng = Double.parseDouble(loc.getString("lng"));
+	    				loc = step.getJSONObject("end_location");
+	    				gstep.endLat = Double.parseDouble(loc.getString("lat"));
+	    				gstep.endLng = Double.parseDouble(loc.getString("lng"));
+	    				response.steps[i] = gstep;
+	    			}
+	    		}
+	    		return response;
+    		}
+    		catch (Exception e) {
+    			Log.v("EXCEPTION", e.getMessage());
+    		}
+    		return null;
+    	}
+    	public void complete(Object response) {
+    		didCompleteDirectionsSearch((DirectionsSearchResponse)response);
+    	}
+    }
+    
+    
     
     
     /**************************** TEXT/SPEECH STUFF BELOW ******************/
