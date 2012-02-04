@@ -1,38 +1,48 @@
 package org.tarunmarco.BlindEye;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Scanner;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Scanner;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import android.app.Activity;
 import android.content.Context;
-import android.location.*;
-import android.os.AsyncTask;
-import android.os.Bundle;
-import android.util.Log;
-import android.widget.TextView;
-
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.os.AsyncTask;
+import android.os.Bundle;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.TextToSpeech.OnInitListener;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.GestureDetector.SimpleOnGestureListener;
 import android.view.MotionEvent;
+import android.widget.TextView;
 
-public class BlindEyeActivity extends Activity implements OnInitListener {
-	
+public class BlindEyeActivity extends Activity implements OnInitListener, LocationListener {
+	//mock location related stuff
+	private MockLocationProvider locProviderThread;
+	private String locProviderString = LocationManager.GPS_PROVIDER;
+	private LocationManager locManager;
+	private String gpsInputFile = "straight_locations.txt";
+		
 	// location-related member variables
 	private double latitude;
     private double longitude;
@@ -64,7 +74,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
 	private static final int VOICE_RECOGNITION_REQUEST_CODE = 1234;	
 	
 	
-    /** Called when the activity is first created. */
+	 /** Called when the activity is first created. */
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -73,38 +83,14 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
         addrTextView = (TextView) findViewById(R.id.myTextView2);
         coordsTextView.setText("waiting for location...");
         addrTextView.setText("waiting for address...");
-        
-        LocationManager locManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
-        
-        LocationListener locListener = new LocationListener() {
-        	public void onLocationChanged(Location location) {
-        		makeUseOfNewLocation(location);
-        	}
-        	public void onStatusChanged(String provider, int status, Bundle extras) {}
-            public void onProviderEnabled(String provider) {}
-            public void onProviderDisabled(String provider) {}
-        };
-        
-        locManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locListener);
-        
-        Location lastKnownLocation = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-        
-        if (lastKnownLocation != null) {
-	        latitude = lastKnownLocation.getLatitude();
-	        longitude = lastKnownLocation.getLongitude();
-	        if (lastKnownLocation.hasBearing()) {
-	        	haveBearing = true;
-	        	bearing = lastKnownLocation.getBearing();
-	        }
-	        updateTextViewWithLocation();
-	        Location newLoc = new Location(LocationManager.GPS_PROVIDER);
-	        newLoc.setLatitude(34.002735);
-	        newLoc.setLongitude(-118.40657666666667);
-	        searchForDirections(newLoc);
-        }
-        
-        ///////////////////// TEXT/SPEECH STUFF BELOW ///////////
 
+        ///////////////////// TEXT/SPEECH STUFF BELOW ///////////
+        optionsList.clear();
+        optionsList.put("navigate", INPUT_OPTION_TYPE.NAVIGATE);
+        optionsList.put("location", INPUT_OPTION_TYPE.LOCATION);
+    	optionsList.put("flag", INPUT_OPTION_TYPE.FLAG);
+    	reset_input_state();
+    	
         //check if the text to speech engine components are there or not.
         Intent checkIntent = new Intent();
         checkIntent.setAction(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA);
@@ -113,21 +99,66 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
         gestureEvent = (TextView)findViewById(R.id.GestureEvent);
         recognizerEvent = (TextView)findViewById(R.id.RecognitionEvent);
         
-        //check in recognition activity 
+        ///// Speach recognition related stuff 
         PackageManager pm = getPackageManager();
         List<ResolveInfo> activities = pm.queryIntentActivities(
                 new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH), 0);
         if(activities.size()==0){
         	gestureEvent.setText("Error: No speech recognizer present");
         }
-        optionsList.clear();
-        optionsList.put("navigate", INPUT_OPTION_TYPE.NAVIGATE);
-        optionsList.put("location", INPUT_OPTION_TYPE.LOCATION);
-    	optionsList.put("flag", INPUT_OPTION_TYPE.FLAG);
-    	reset_input_state();
+    	
+    	//GPS related stuff
+        locManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
+    	locManager.addTestProvider(locProviderString, false, false, false, false, false, true, true, 0, 5);
+        locManager.setTestProviderEnabled(locProviderString, true);
+        locManager.requestLocationUpdates(locProviderString, 0, 0, this);
+        //store data into thread
+        try {
+			List<String> data = new ArrayList<String>();
+			InputStream is = getAssets().open(gpsInputFile);
+			BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+			String line = null;
+			while ((line = reader.readLine()) != null) {
+				data.add(line);
+			}
+			Log.e("LOCATION_FILE_READING", data.size() + " lines");
+			locProviderThread = new MockLocationProvider(locManager, locProviderString, data);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		/*
+        Location lastKnownLocation = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);  
+        if (lastKnownLocation != null) {
+	        latitude = lastKnownLocation.getLatitude();
+	        longitude = lastKnownLocation.getLongitude();
+	        if (lastKnownLocation.hasBearing()) {
+	        	haveBearing = true;
+	        	bearing = lastKnownLocation.getBearing();
+	        }
+	        updateTextViewWithLocation();
+	        searchForLocationAddress();
+        }
+        */
+    	//
     }
     //////// END onCreate //////////
-    
+//////Mock GPS location stuff. Will have to be changed when using a real GPS.
+	@Override
+	public void onLocationChanged(Location location) {
+		makeUseOfNewLocation(location);		
+	}
+	@Override
+	public void onProviderDisabled(String provider) {
+		return;
+	}
+	@Override
+	public void onProviderEnabled(String provider) {
+		return;
+	}
+	@Override
+	public void onStatusChanged(String provider, int status, Bundle extras) {
+		return;
+	}
     private void makeUseOfNewLocation(Location location) {
     	latitude = location.getLatitude();
     	longitude = location.getLongitude();
@@ -602,6 +633,7 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
 		mTts.setLanguage(Locale.US);
 		ttsReady = true;
 		welcomeScreen();
+		locProviderThread.execute();
 	}
 	private void pauseTillSpeechFinished()
 	{
