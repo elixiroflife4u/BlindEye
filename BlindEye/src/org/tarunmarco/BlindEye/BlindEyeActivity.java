@@ -1,6 +1,5 @@
 package org.tarunmarco.BlindEye;
 
-import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -153,10 +152,150 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
     	coordsTextView.setText(sb.toString());
     }
     
-    // Location lookup
-    PlacesSearchTask placesSearchTask = null;
-    private static final String googleAPIKey = "AIzaSyB-1QyezeCVBLlqe1cbZ9eqgMibnPk37TU";
     
+    /************** JSON REST APIs ***********/
+
+    // interface for custom visitors that examine the JSON result from some API
+    private interface JSONVisitor {
+    	// look at the JSON and generate some response object
+    	public Object visit(JSONObject root);
+    	// do something with the generated response object
+    	public void complete(Object response);
+    }
+    
+    // generic API request task
+    private class APIRequestTask extends AsyncTask<Void,Void,Object> {
+    	private Map<String,String> params;
+    	private String url;
+    	private JSONVisitor visitor;
+    	
+    	public static final String GOOGLE_PLACE_SEARCH = "https://maps.googleapis.com/maps/api/place/search/json";
+    	//public static final String GOOGLE_REVERSE_GEOCODE = "https://maps.googleapis.com/maps/api/geocode/json";
+    	private static final String GOOGLE_API_KEY = "AIzaSyB-1QyezeCVBLlqe1cbZ9eqgMibnPk37TU";
+    	public static final String GEONAMES_REVERSE_GEOCODE = "http://api.geonames.org/findNearestAddressJSON";
+    	public static final String GEONAMES_USER = "elixiroflife4u";
+    	
+    	public APIRequestTask(String url, JSONVisitor visitor) {
+    		this.url = url;
+    		this.params = new HashMap<String,String>();
+    		this.visitor = visitor;
+    	}
+    	public void setParam(String name, String value) {
+    		params.put(name, value);
+    	}
+    	protected Object doInBackground(Void... args) {
+    		// build query string
+    		StringBuilder sb = new StringBuilder();
+    		sb.append(url);
+    		sb.append("?");
+    		for (String key : params.keySet()) {
+    			sb.append(URLEncoder.encode(key));
+    			sb.append("=");
+    			sb.append(URLEncoder.encode(params.get(key)));
+    			sb.append("&");
+    		}
+    		String query = sb.toString();
+    		try {
+    			// make HTTP GET request
+    			Log.v("HTTP", query);
+        		HttpURLConnection conn = (HttpURLConnection) new URL(query).openConnection();
+        		// get HTTP response code
+        		int responseCode = conn.getResponseCode();
+        		Log.v("HTTP", "response code " + responseCode);
+        		if (responseCode == HttpURLConnection.HTTP_OK) {
+        			// read JSON from stream
+    	    		String jsonStr = new Scanner(conn.getInputStream()).useDelimiter("\\A").next();
+    	    		conn.disconnect();
+    	    		// parse into JSON object
+    	    		JSONObject root = new JSONObject(jsonStr);
+    	    		return visitor.visit(root);
+        		}
+        		else {
+        			conn.disconnect();
+        		}
+        	} catch (Exception e) {
+        		Log.v("EXCEPTION", e.toString());
+        	}
+    		return null;
+    	}
+    	protected void onPostExecute(Object response) {
+    		visitor.complete(response);
+    	}
+    }
+    
+    
+    /************** GOOGLE REVERSE GEOCODING **********/
+    
+    APIRequestTask geocodeTask = null;
+    
+    private class ReverseGeocodeResponse {
+    	public String postalcode;
+    	public String street;
+    	public String streetNumber;
+    	public String place;
+    	public String countryCode;
+    }
+    
+    private void searchForLocationAddress() {
+    	// text view gets 'pending' message
+    	addrTextView.setText("waiting for address...");
+    	// cancel any existing task
+    	if (geocodeTask != null) {
+    		Log.v("MAIN", "canceling current reverse geocode lookup");
+    		geocodeTask.cancel(true);
+    	}
+    	// new async task for google places request
+    	geocodeTask = new APIRequestTask(APIRequestTask.GEONAMES_REVERSE_GEOCODE, new ReverseGeocodeVisitor());
+    	geocodeTask.setParam("username", APIRequestTask.GEONAMES_USER);
+    	geocodeTask.setParam("lat", Double.toString(latitude));
+    	geocodeTask.setParam("lng", Double.toString(longitude));
+    	geocodeTask.execute();
+    }
+    
+    private void didCompleteReverseGeocode(ReverseGeocodeResponse response) {
+    	if (response == null) {
+    		addrTextView.setText("Internal failure.");
+    	}
+    	else {
+    		addrTextView.setText(response.streetNumber + " " + response.street + " " + 
+    							 response.place + " " + response.postalcode + " " + response.countryCode);
+    	}
+    }
+    
+    private class ReverseGeocodeVisitor implements JSONVisitor {
+    	public Object visit(JSONObject root) {
+    		try {
+	    		// get address object
+	    		if (!root.has("address"))
+	    			return null;
+	    		JSONObject addrObj = root.getJSONObject("address");
+	    		ReverseGeocodeResponse geocodeResponse = new ReverseGeocodeResponse();
+	    		geocodeResponse.streetNumber = addrObj.has("streetNumber") ? addrObj.getString("streetNumber") : "";
+	    		geocodeResponse.street       = addrObj.has("street")       ? addrObj.getString("street")       : "";
+	    		geocodeResponse.place        = addrObj.has("placename")    ? addrObj.getString("placename")    : "";
+	    		geocodeResponse.postalcode   = addrObj.has("postalcode")   ? addrObj.getString("postalcode")   : "";
+	    		geocodeResponse.countryCode  = addrObj.has("countryCode")  ? addrObj.getString("countryCode")  : "";
+	    		return geocodeResponse;
+    		}
+    		catch (Exception e) {
+    			Log.v("EXCEPTION", e.getMessage());
+    		}
+    		return null;
+    	}
+    	public void complete(Object response) {
+    		// callback method in main Activity
+    		didCompleteReverseGeocode((ReverseGeocodeResponse)response);
+    	}
+    }
+    
+    
+    
+    /************** GOOGLE PLACES SEARCH **********/
+    
+    // save pending task
+    APIRequestTask placesSearchTask = null;
+    
+    // container for a google places result
     private class GooglePlacesResult {
     	public String name;
     	public String vicinity;
@@ -164,8 +303,6 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
     	public double latitude;
     	public double longitude;
     	public double rating;
-    	public String iconURL;
-    	public String id;
     	public String reference;
     	
     	public GooglePlacesResult() {
@@ -176,26 +313,33 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
     	}
     }
     
+    // response object for google places search
     private class PlacesSearchResponse {
     	public String status;
     	public GooglePlacesResult results[];
     }
     
-    private void searchForLocationAddress() {
-    	// text view has pending message
-    	addrTextView.setText("waiting for address...");
-    	// async google maps request
+    private void searchForPlaces() {
+    	// text view gets 'pending' message
+    	addrTextView.setText("waiting for places...");
+    	// cancel any existing task
     	if (placesSearchTask != null) {
     		Log.v("MAIN", "canceling current location lookup");
     		placesSearchTask.cancel(true);
     	}
-    	String[] types = {"food"};
-    	placesSearchTask = new PlacesSearchTask(latitude, longitude, 500, types);
+    	// new async task for google places request
+    	placesSearchTask = new APIRequestTask(APIRequestTask.GOOGLE_PLACE_SEARCH, new PlacesSearchVisitor());
+    	placesSearchTask.setParam("key", APIRequestTask.GOOGLE_API_KEY);
+    	placesSearchTask.setParam("radius", "500");
+    	placesSearchTask.setParam("sensor", "true");
+    	placesSearchTask.setParam("language", "en");
+    	placesSearchTask.setParam("location", latitude+","+longitude);
+    	placesSearchTask.setParam("types", "food");
     	placesSearchTask.execute();
     }
     
-    // callback when location lookup completes
-    private void didCompleteLocationLookup(PlacesSearchResponse response) {
+    // callback when google places search is complete
+    private void didCompletePlacesSearch(PlacesSearchResponse response) {
     	if (response == null) {
     		addrTextView.setText("Internal failure.");
     	}
@@ -223,61 +367,17 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
     	}
     }
     
-    private class PlacesSearchTask extends AsyncTask<Void,Void,PlacesSearchResponse> {
-    	// query parameters
-    	private double latitude, longitude;
-    	private int radius;
-    	private String[] locTypes;
-    	// custom constructor
-    	public PlacesSearchTask(double latitude, double longitude, int radius, String[] locTypes) {
-    		this.latitude = latitude;
-    		this.longitude = longitude;
-    		this.radius = radius;
-    		this.locTypes = locTypes;
-    	}
-    	// this is executed when requested by the main thread
-    	protected PlacesSearchResponse doInBackground(Void... args) {
-    		// build query string
-    		String typesStr = (locTypes.length < 1) ? "" : locTypes[0];
-    		for (int i = 1; i < locTypes.length; i++) {
-    			typesStr += "|" + URLEncoder.encode(locTypes[i]);
-    		}
-    		String query = String.format(
-    				"https://maps.googleapis.com/maps/api/place/search/json?key=%s&location=%f%%2C%f&radius=%d&sensor=true&language=en&types=%s",
-    				googleAPIKey, latitude, longitude, radius, typesStr
-    				);
-    		PlacesSearchResponse result = null;
+    // custom visitor for google places search results
+    private class PlacesSearchVisitor implements JSONVisitor {
+    	public Object visit(JSONObject root) {
     		try {
-    			// make HTTP GET request
-    			Log.v("HTTP", query);
-        		HttpURLConnection conn = (HttpURLConnection) new URL(query).openConnection();
-        		// get HTTP response code
-        		int responseCode = conn.getResponseCode();
-        		Log.v("HTTP", "response code " + responseCode);
-        		if (responseCode == HttpURLConnection.HTTP_OK) {
-        			result = parseHTTPResponse(conn.getInputStream());
-        		}
-        		conn.disconnect();
-        	} catch (Exception e) {
-        		Log.v("EXCEPTION", e.toString());
-        	}
-    		return result;
-    	}
-    	// helper method for parsing HTTP response
-    	private PlacesSearchResponse parseHTTPResponse(InputStream istream) {
-    		try {
-    			// read JSON from stream
-	    		String jsonStr = new Scanner(istream).useDelimiter("\\A").next();
-	    		// parse into JSON object
-	    		JSONObject root = new JSONObject(jsonStr);
-	    		
 	    		// get status string
 	    		String statusStr = root.getString("status");
 	    		PlacesSearchResponse placesResponse = new PlacesSearchResponse();
 	    		placesResponse.status = statusStr;
 	    		if (!statusStr.equals("OK"))
 	    			return placesResponse;
-	    		
+    		
 	    		// get results
 	    		JSONArray resultArray = root.getJSONArray("results");
 	    		int count = resultArray.length();
@@ -285,24 +385,10 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
 	    		for (int i = 0; i < count; i++) {
 	    			GooglePlacesResult r = placesResponse.results[i] = new GooglePlacesResult();
 	    			JSONObject resultObj = resultArray.getJSONObject(i);
-	    			if (resultObj.has("name")) {
-	    				r.name = resultObj.getString("name");
-	    			}
-	    			if (resultObj.has("vicinity")) {
-	    				r.vicinity = resultObj.getString("vicinity");
-	    			}
-	    			if (resultObj.has("rating")) {
-	    				r.rating = resultObj.getDouble("rating");
-	    			}
-	    			if (resultObj.has("id")) {
-	    				r.id = resultObj.getString("id");
-	    			}
-	    			if (resultObj.has("reference")) {
-	    				r.reference = resultObj.getString("reference");
-	    			}
-	    			if (resultObj.has("icon")) {
-	    				r.iconURL = resultObj.getString("icon");
-	    			}
+	    			r.name = resultObj.has("name") ? resultObj.getString("name") : "";
+	    			r.vicinity = resultObj.has("vicinity") ? resultObj.getString("vicinity") : "";
+	    			r.rating = resultObj.has("rating") ? resultObj.getDouble("rating") : Double.NaN;
+	    			r.reference = resultObj.has("reference") ? resultObj.getString("reference") : "";
 	    			if (resultObj.has("types")) {
 	    				JSONArray typesArray = resultObj.getJSONArray("types");
 	    				int ntypes = typesArray.length();
@@ -318,20 +404,21 @@ public class BlindEyeActivity extends Activity implements OnInitListener {
 	    					r.longitude = locObj.getDouble("lng");
 	    				}
 	    			}
-	    		} // end foreach result
+	    		} // end for each result
 	    		return placesResponse;
     		}
     		catch (Exception e) {
-    			Log.v("JSON", "exception: " + e.toString());
+    			Log.v("EXCEPTION", e.getMessage());
     		}
     		return null;
     	}
-    	// this is run in the main thread after the execution is complete
-    	protected void onPostExecute(PlacesSearchResponse result) {
-    		didCompleteLocationLookup(result);
+    	public void complete(Object response) {
+    		// callback method in main Activity
+    		didCompletePlacesSearch((PlacesSearchResponse)response);
     	}
     }
     
+ 
     
     
     /**************************** TEXT/SPEECH STUFF BELOW ******************/
