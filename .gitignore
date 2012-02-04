@@ -1,0 +1,5 @@
+*.class
+BlindEye/bin/*
+BlindEye/gen/*
+.DS_Store*
+.metadata
