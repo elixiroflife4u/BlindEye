@@ -713,6 +713,22 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
     					gst.instructions, gst.startLat, gst.startLng, gst.endLat, gst.endLng, Math.round(3.281*gst.meters), gst.seconds));
     		}
     		addrTextView.setText(sb.toString());
+    		
+    		
+    		// speak directions
+    		String message = "Directions from " + response.startAddress + ", to " + response.endAddress + ".";
+    		for (int i = 0; i < count; i++) {
+    			GoogleDirectionsStep gst = response.steps[i];
+    			String instrs = gst.instructions;
+    			instrs = instrs.replaceAll("<[^<>]*>", "");
+    			message += "Step " + (i+1) + ": " + instrs + ". ";
+    			int mins = gst.seconds / 60;
+    			if (mins < 1) message += "Less than a minute.";
+    			else if (mins == 1) message += "About a minute.";
+    			else message += "About " + mins + " minutes.";
+    		}
+    		speakText(message, false, "navigate");
+    		
     	}
     	else {
     		Log.v("MAIN", "directions search bad response: "+response.status);
@@ -862,6 +878,23 @@ public class BlindEyeActivity extends Activity implements OnInitListener, Locati
 	    			speechState = INPUT_OPTION_TYPE.AROUND_ME;
 	    			searchForPlaces();
 	    		}
+	    		
+	    		else if (currentInputOption == INPUT_OPTION_TYPE.NAVIGATE) {
+	    			condwait.setRunStatus(false);
+	    			speechState = INPUT_OPTION_TYPE.NAVIGATE;
+	    			Log.v("MAIN", "condwait false onActivity navigate");
+	    			if (lastPlacesResponse.results.length > 0) {
+		    			Location loc = new Location(LocationManager.GPS_PROVIDER);
+		    			GooglePlacesResult r = lastPlacesResponse.results[0];
+		    			loc.setLatitude(r.latitude);
+		    			loc.setLongitude(r.longitude);
+		    			searchForDirections(loc);
+	    			}
+	    			else {
+	    				speakText("No nearby places.", false, "navigate");
+	    			}
+	    		}
+	    		
 	    		//freeze the gps data
 	    		//handle the request
 	    		//resume the data stream

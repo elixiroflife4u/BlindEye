@@ -9,7 +9,7 @@ import android.os.AsyncTask;
 import android.util.Log;
 
 public class MockLocationProvider extends AsyncTask<Void, Void, Void> {
-	private final long sleepTime = 6000; // 6 second
+	private final long sleepTime = 10000; // 6 second
 	private List<String> data;
 	private LocationManager locationManager;
 	private String mockLocationProvider;

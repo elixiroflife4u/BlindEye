@@ -8,7 +8,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class ConditionalWait {
 	final Lock lock = new ReentrantLock();
 	final Condition notFull  = lock.newCondition();
-	final long timeToWakeup = 6000;
+	final long timeToWakeup = 10000;
 	volatile private boolean proceed  = false;
 	
 	public boolean locationProviderProceed() throws InterruptedException{
